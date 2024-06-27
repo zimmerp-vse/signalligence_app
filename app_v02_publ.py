@@ -3,7 +3,7 @@ import pickle
 import pandas as pd
 import numpy as np
 import configparser
-import os
+#import os
 #import pyarrow.dataset as ds
 import gravis as gv
 import matplotlib.pyplot as plt
@@ -54,9 +54,10 @@ edges_pth = root_prefix+config_read.get("Paths", "edges_pth")
 _, groupby_levels, _ = pd.read_pickle(dim_level_structure_pth.replace('/','\\'))
 
 #list of files in dim_level_structure_pth
-dim_files = os.listdir(dayly_data_pth)
+#dim_files = os.listdir(dayly_data_pth)
 #extract numbers from the filenames after 'before '_'
-days_in_dir = [int(i.split('_')[0]) for i in dim_files]
+#days_in_dir = [int(i.split('_')[0]) for i in dim_files]
+days_in_dir = [1546, 1547, 1548, 1549, 1550, 1551, 1552, 1553, 1554, 1555, 1556, 1557, 1558, 1559, 1560]
 
 
 
