@@ -51,15 +51,14 @@ dayly_data_pth = root_prefix+config_read.get("Paths", "df_day_pth")
 edges_pth = root_prefix+config_read.get("Paths", "edges_pth")
 
 
-_, groupby_levels, _ = pd.read_pickle(dim_level_structure_pth.replace('/','\\'))
+_, groupby_levels, _ = pd.read_pickle(dim_level_structure_pth)#.replace('/','\\'))
 
 #list of files in dim_level_structure_pth
 #dim_files = os.listdir(dayly_data_pth)
 #extract numbers from the filenames after 'before '_'
 #days_in_dir = [int(i.split('_')[0]) for i in dim_files]
+
 days_in_dir = [1546, 1547, 1548, 1549, 1550, 1551, 1552, 1553, 1554, 1555, 1556, 1557, 1558, 1559, 1560]
-
-
 
 #for d_day in days_in_dir:
 #    df_day = filter_dataset(dataset, d_day, d_day, cols=None)
@@ -78,11 +77,11 @@ d_day = st.selectbox('Select DAY', days_in_dir)
 reported_idx = []
 
 #load pickle
-df_day = pd.read_pickle((dayly_data_pth+str(d_day)+'_df_day.pkl').replace('/','\\'))
+df_day = pd.read_pickle((dayly_data_pth+str(d_day)+'_df_day.pkl'))#.replace('/','\\'))
 
 #Load edges and nodes
 try:
-    edges_df = pd.read_pickle((edges_pth+str(d_day)+'_edges_df.pkl').replace('/','\\'))
+    edges_df = pd.read_pickle((edges_pth+str(d_day)+'_edges_df.pkl'))#.replace('/','\\'))
 except FileNotFoundError:
     st.error(f"File not found.")
     #stop st
