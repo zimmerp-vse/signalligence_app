@@ -4,3 +4,4 @@ numpy
 gravis
 matplotlib
 shap
+pyarrow
