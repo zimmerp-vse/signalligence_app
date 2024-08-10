@@ -79,7 +79,8 @@ def display_description_maxshap(max_display, feature_description, sum_shap_df_fi
     top_features = [features[i] for i in top_idx]
 
     #Display feature description of top 7 features
-    print(feature_description[feature_description['Feature name'].isin(top_features)])
+    #print(feature_description[feature_description['Feature name'].isin(top_features)])
+    st.table(feature_description[feature_description['Feature name'].isin(top_features)])
 
 def list_files(directory):
     p = Path(directory)
