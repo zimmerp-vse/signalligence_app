@@ -112,7 +112,7 @@ explainer_file = root_prefix+config_read.get("Paths", "explainer_file")
 feature_description_pth = root_prefix+config_read.get("Paths", "feature_description_pth")
 
 
-_, groupby_levels, _ = pd.read_pickle(dim_level_structure_pth.replace('/','\\'))#.replace('/','\\'))
+_, groupby_levels, _ = pd.read_pickle(dim_level_structure_pth)#.replace('/','\\'))
 
 measure = config_read.get("MainSettings", "measure") #the response
 measure1 = config_read.get("MainSettings", "measure1") #the response
@@ -145,7 +145,7 @@ df_day = filter_dataset(dataset, d_day, d_day, cols=None)
 #as github does not allow data longer than 25MB, we need to cut the data into days and save it as pkl.
 #load outlier data for a given day
 #from pickle 
-#df_day = pd.read_pickle((df_day_pth+str(d_day)+'_df_day.pkl').replace('/','\\'))#.replace('/','\\'))
+#df_day = pd.read_pickle((df_day_pth+str(d_day)+'_df_day.pkl'))#.replace('/','\\'))
 
 #for d_day in days_in_dir:
 #    df_day = filter_dataset(dataset, d_day, d_day, cols=None)
@@ -154,7 +154,7 @@ df_day = filter_dataset(dataset, d_day, d_day, cols=None)
 
 #Load SHAP values for a given day
 try:
-    shap_df = pd.read_pickle((shap_pth+str(d_day)+'_shap.pkl').replace('/','\\'))#.replace('/','\\'))
+    shap_df = pd.read_pickle((shap_pth+str(d_day)+'_shap.pkl'))#.replace('/','\\'))
 except FileNotFoundError:
     st.error(f"SHAP file not found.")
     st.stop()
@@ -166,14 +166,14 @@ except FileNotFoundError:
     st.stop()   
 #Load feature description
 try:
-    feature_description = pd.read_excel(feature_description_pth.replace('/','\\'))
+    feature_description = pd.read_excel(feature_description_pth)
 except FileNotFoundError:
     st.error(f"Feature description file not found.")
     st.stop()   
 
 #Load edges and nodes
 try:
-    edges_df = pd.read_pickle((edges_pth+'edges_df_'+str(d_day)+'.pkl').replace('/','\\'))#.replace('/','\\'))
+    edges_df = pd.read_pickle((edges_pth+'edges_df_'+str(d_day)+'.pkl'))#.replace('/','\\'))
 except FileNotFoundError:
     st.error(f"Edges file not found.")
     st.stop()
