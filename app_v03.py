@@ -138,9 +138,9 @@ d_day = st.selectbox('Select day to analyze', days_in_dir)
 reported_idx = []
 
 #from parquet
-dataset = ds.dataset(training_outlier_data_file.replace('/','\\'), 
+dataset = ds.dataset(training_outlier_data_file, 
                     format="parquet",
-                    partitioning="hive")
+                    partitioning="hive")#.replace('/','\\')
 df_day = filter_dataset(dataset, d_day, d_day, cols=None)
 #as github does not allow data longer than 25MB, we need to cut the data into days and save it as pkl.
 #load outlier data for a given day
