@@ -5,3 +5,4 @@ gravis
 matplotlib
 shap
 pyarrow
+xgboost
