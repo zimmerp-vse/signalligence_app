@@ -11,6 +11,7 @@ import matplotlib.colors as mcolors
 import streamlit.components.v1 as components
 import pyarrow.dataset as ds
 import shap
+from pathlib import Path
 
 def filter_dataset(dataset, min_d, max_d = None , cols=None):
     if max_d == None:
@@ -80,15 +81,16 @@ def display_description_maxshap(max_display, feature_description, sum_shap_df_fi
     #Display feature description of top 7 features
     print(feature_description[feature_description['Feature name'].isin(top_features)])
 
-from pathlib import Path
 def list_files(directory):
     p = Path(directory)
     files = [file.name for file in p.glob('*') if file.is_file()]
     return files
 
 
+#tbd: move and read groupby levels from a separate file to spare some space from the main file df_day 
+
 ########SELECT DAY########
-#d_day = 1556
+#d_day = 1540#1556
 #########################
 
 
@@ -135,15 +137,14 @@ d_day = st.selectbox('Select day to analyze', days_in_dir)
 reported_idx = []
 
 #from parquet
-#dataset = ds.dataset(training_outlier_data_file.replace('/','\\'), 
-#                    format="parquet",
-#                    partitioning="hive")
-#df_day = filter_dataset(dataset, d_day, d_day, cols=None)
+dataset = ds.dataset(training_outlier_data_file.replace('/','\\'), 
+                    format="parquet",
+                    partitioning="hive")
+df_day = filter_dataset(dataset, d_day, d_day, cols=None)
 #as github does not allow data longer than 25MB, we need to cut the data into days and save it as pkl.
 #load outlier data for a given day
 #from pickle 
-df_day = pd.read_pickle((df_day_pth+str(d_day)+'_df_day.pkl'))#.replace('/','\\'))
-
+#df_day = pd.read_pickle((df_day_pth+str(d_day)+'_df_day.pkl'))#.replace('/','\\'))
 
 #for d_day in days_in_dir:
 #    df_day = filter_dataset(dataset, d_day, d_day, cols=None)
@@ -192,269 +193,272 @@ reported_nodes['turnover'] = reported_nodes['turnover'].astype(int)
 st.table(reported_nodes)
 reported_idx = reported_nodes.index
 
-st.header('Choose a node to analyze and press the Analyze button')
-# Add a selection box to the application to select the node index
-start_node = st.selectbox('Select node to analyze', reported_idx, on_change=None, key=None)
-#start_node =13201792 # 13198576 #13201792
-#Describe value and prediction for the given day and node
-st.write('Node description:')
-node_desc = df_day.loc[start_node, groupby_levels].to_frame().T
-#replace NaN with 'All'
-node_desc = node_desc.fillna('All')
-st.write(node_desc, index = False)
-st.write('Node '+ measure1 + ':')
-st.write(df_day.loc[start_node, measure1])#move the multiplication to aggregation function, df_day.loc[start_node, measure1]
-st.write('Predicted '+ measure1)
-st.write(df_day.loc[start_node, preds1])
-st.write('Node '+ measure + ':')
-st.write(df_day.loc[start_node, measure])
-st.write('Predicted '+ measure)
-st.write(df_day.loc[start_node, preds])
+if len(reported_idx) == 0:
+    st.write('No outliers found for the given day. Please select another day.')
+else:
+    st.header('Choose a node to analyze and press the Analyze button')
+    # Add a selection box to the application to select the node index
+    start_node = st.selectbox('Select node to analyze', reported_idx, on_change=None, key=None)
+    #start_node =13201792 # 13198576 #13201792
+    #Describe value and prediction for the given day and node
+    st.write('Node description:')
+    node_desc = df_day.loc[start_node, groupby_levels].to_frame().T
+    #replace NaN with 'All'
+    node_desc = node_desc.fillna('All')
+    st.write(node_desc, index = False)
+    st.write('Node '+ measure1 + ':')
+    st.write(df_day.loc[start_node, measure1])#move the multiplication to aggregation function, df_day.loc[start_node, measure1]
+    st.write('Predicted '+ measure1)
+    st.write(df_day.loc[start_node, preds1])
+    st.write('Node '+ measure + ':')
+    st.write(df_day.loc[start_node, measure])
+    st.write('Predicted '+ measure)
+    st.write(df_day.loc[start_node, preds])
 
-if st.button('Explain prediction'):
-    #Load SHAP values for a given day
-    hi_or_low = 'high' if df_day.loc[start_node, measure] > df_day.loc[start_node, preds] else 'low'
-    st.write('Why is the predicted '+ measure + ' '+ hi_or_low + ' for the node?')
-    #Barplot to compare measure and prediction
-    fig, ax = plt.subplots()
-    ax.bar(['measure', 'prediction'], [df_day.loc[start_node, measure], df_day.loc[start_node, preds]])
-    ax.set(xlabel='', ylabel=measure,
-            title='Comparison of measure and prediction')
-    #add value labels
-    for i in ax.patches:
-        ax.text(i.get_x() + i.get_width()/2, i.get_height() + 0.1, str(round(i.get_height(),2)), ha = 'center', va = 'bottom')
-    ax.grid()
-    st.pyplot(fig)
-    #Aggregate SHAP values for the start_node
-    st.write('SHAP values for the node:')
-    sum_shap_df_filtered_np = aggregate_shap(start_node, groupby_levels, shap_df, reported_nodes, features)
-    #shap.initjs()
-    max_display = 7
-    # Create a new matplotlib figure
-    fig, ax = plt.subplots()
-    shap.waterfall_plot(shap.Explanation(values=sum_shap_df_filtered_np, base_values=explainer.expected_value, feature_names = features), max_display=max_display, show=True)
-    st.pyplot(fig)
-    st.write('This plot shows the contribution of each feature to the difference between the measure and the prediction. The base value is the expected value of the prediction. The sum of the SHAP values and the base value is the prediction.')
-    #Display feature description of max_display-1 features (-1 as watterfall plot shows max_display features -1 + "others")
-    display_description_maxshap(max_display-1, feature_description, sum_shap_df_filtered_np, features)
-if st.button('View node stats'):    
-    #---Time series plots and outlier analysis for the given node ---
-    #Load time series for a given node
-    node_key_id = reported_nodes.loc[start_node,'node_key_id']
-    ts = dataset.to_table(filter=(ds.field("node_key_id") == node_key_id ), columns=None).to_pandas()
-    #Plot the time series and mark the value of d_day with red
-    fig, ax = plt.subplots()
-    ax.plot(ts['d'], ts[measure])
-    ax.set(xlabel='day', ylabel=measure,
-              title='Time series of the measure')
-    #Mark the d_day point with red, linewidth 0.5, type --
-    ax.axvline(x=d_day, color='r', linewidth=0.5, linestyle='-.')
-    ax.grid()
-    st.pyplot(fig)
-    #plot the r
-    fig, ax = plt.subplots()
-    ax.plot(ts['d'], ts['r'])
-    ax.set(xlabel='day', ylabel='residual',
-                title='Time series of the residuals')
-    #Mark the d_day point with red, linewidth 0.5, type --
-    ax.axvline(x=d_day, color='r', linewidth=0.75, linestyle='-.')
-    ax.grid()
-    st.pyplot(fig)
-    #Historgram of r
-    fig, ax = plt.subplots()
-    ax.hist(ts['r'], bins='auto') #len(ts)//10
-    ax.set(xlabel='residual_bin', ylabel='Frequency',
-                title='Histogram of residuals')
-    #Mark the value of the d_day with red, linewidth 0.5, type --
-    ax.axvline(x=ts.loc[ts['d'] == d_day, 'r'].values[0], color='r', linewidth=0.5, linestyle='-.')
-    ax.grid()
-    st.pyplot(fig)
-
-
-if st.button('Analyze'):
-    #Instantiate trajectory
-    trajectory_cols = ['src', 'dst', 'entropy', 'ecdf_src', 'ecdf_dst', 'edge_label', 'direction']
-    trajectory = pd.DataFrame(columns=trajectory_cols)
-    trajectory_tmp = pd.DataFrame(columns=trajectory_cols)
-
-    ###Drill down###
-    neighbor_buffer = [start_node]
-
-    while len(neighbor_buffer)>0: #Until there are no more neighbors to connect with edges
-        #Update current src node
-        src = neighbor_buffer[0] 
-        #Find outlying low-entropy neighbors of the start_node
-        edges_tmp = edges_df[(edges_df['src']==src) & (edges_df['entropy']<thr_entropy)& (edges_df['ecdf_dst']>thr_ecdf)].copy()
-        #Select only the highest entropy dst node as several dimensions neighbors may fulfill the condition - 
-        if len(edges_tmp) > 0: #If there are any outlying low-entropy neighbors for src
-            edges_tmp = edges_tmp[edges_tmp['entropy'] == edges_tmp['entropy'].max()]
-            #Create trajectory_step
-            trajectory_tmp.loc[0,'src'] = src
-            trajectory_tmp.loc[0,'dst'] = edges_tmp['dst'].tolist()
-            trajectory_tmp.loc[0,'entropy'] = edges_tmp['entropy'].iloc[0] #all same
-            trajectory_tmp.loc[0,'ecdf_src'] = edges_tmp['ecdf_src'].iloc[0] #all same
-            trajectory_tmp.loc[0,'ecdf_dst'] = edges_tmp['ecdf_dst'].tolist()
-            trajectory_tmp.loc[0,'edge_label'] = edges_tmp['edge_label'].iloc[0]
-            #Update trajectory
-            trajectory = pd.concat([trajectory, trajectory_tmp], ignore_index=True)
-            #Update nodes  buffer
-            #add dst_nodes to the neighbor_buffer
-            neighbor_buffer = neighbor_buffer + edges_tmp['dst'].tolist()
-            #drop duplicates
-            neighbor_buffer = list(set(neighbor_buffer))
-        #Remove src from the neighbor_buffer as it was already connected
-        neighbor_buffer.remove(src)
-    trajectory['direction'] = 'down'  
-    trajectory.reset_index(drop=True, inplace=True)
-    #display(trajectory)
-
-    ####Roll up####
-    dst = start_node
-    #reset trajectory loop temporary 
-    trajectory_tmp = trajectory_tmp = pd.DataFrame(columns=trajectory_cols)
+    if st.button('Explain prediction'):
+        #Load SHAP values for a given day
+        hi_or_low = 'high' if df_day.loc[start_node, measure] > df_day.loc[start_node, preds] else 'low'
+        st.write('Why is the predicted '+ measure + ' '+ hi_or_low + ' for the node?')
+        #Barplot to compare measure and prediction
+        fig, ax = plt.subplots()
+        ax.bar(['measure', 'prediction'], [df_day.loc[start_node, measure], df_day.loc[start_node, preds]])
+        ax.set(xlabel='', ylabel=measure,
+                title='Comparison of measure and prediction')
+        #add value labels
+        for i in ax.patches:
+            ax.text(i.get_x() + i.get_width()/2, i.get_height() + 0.1, str(round(i.get_height(),2)), ha = 'center', va = 'bottom')
+        ax.grid()
+        st.pyplot(fig)
+        #Aggregate SHAP values for the start_node
+        st.write('SHAP values for the node:')
+        sum_shap_df_filtered_np = aggregate_shap(start_node, groupby_levels, shap_df, reported_nodes, features)
+        #shap.initjs()
+        max_display = 7
+        # Create a new matplotlib figure
+        fig, ax = plt.subplots()
+        shap.waterfall_plot(shap.Explanation(values=sum_shap_df_filtered_np, base_values=explainer.expected_value, feature_names = features), max_display=max_display, show=True)
+        st.pyplot(fig)
+        st.write('This plot shows the contribution of each feature to the difference between the measure and the prediction. The base value is the expected value of the prediction. The sum of the SHAP values and the base value is the prediction.')
+        #Display feature description of max_display-1 features (-1 as watterfall plot shows max_display features -1 + "others")
+        display_description_maxshap(max_display-1, feature_description, sum_shap_df_filtered_np, features)
+    if st.button('View node stats'):    
+        #---Time series plots and outlier analysis for the given node ---
+        #Load time series for a given node
+        node_key_id = reported_nodes.loc[start_node,'node_key_id']
+        ts = dataset.to_table(filter=(ds.field("node_key_id") == node_key_id ), columns=None).to_pandas()
+        #Plot the time series and mark the value of d_day with red
+        fig, ax = plt.subplots()
+        ax.plot(ts['d'], ts[measure])
+        ax.set(xlabel='day', ylabel=measure,
+                title='Time series of the measure')
+        #Mark the d_day point with red, linewidth 0.5, type --
+        ax.axvline(x=d_day, color='r', linewidth=0.5, linestyle='-.')
+        ax.grid()
+        st.pyplot(fig)
+        #plot the r
+        fig, ax = plt.subplots()
+        ax.plot(ts['d'], ts['r'])
+        ax.set(xlabel='day', ylabel='residual',
+                    title='Time series of the residuals')
+        #Mark the d_day point with red, linewidth 0.5, type --
+        ax.axvline(x=d_day, color='r', linewidth=0.75, linestyle='-.')
+        ax.grid()
+        st.pyplot(fig)
+        #Historgram of r
+        fig, ax = plt.subplots()
+        ax.hist(ts['r'], bins='auto') #len(ts)//10
+        ax.set(xlabel='residual_bin', ylabel='Frequency',
+                    title='Histogram of residuals')
+        #Mark the value of the d_day with red, linewidth 0.5, type --
+        ax.axvline(x=ts.loc[ts['d'] == d_day, 'r'].values[0], color='r', linewidth=0.5, linestyle='-.')
+        ax.grid()
+        st.pyplot(fig)
 
 
-    while True:
-        edges_tmp = edges_df.loc[(edges_df['dst']==dst) & (edges_df['entropy']<thr_entropy)& (edges_df['ecdf_dst']>thr_ecdf),:].copy()
-        #Select only the highest entropy dst node
-        if len(edges_tmp) > 0: #If there are any outlying low-entropy neighbors for src
-            edges_tmp = edges_tmp[edges_tmp['entropy'] == edges_tmp['entropy'].max()]
-            #This can only be one line (unlike in drill down where there can be multiple dst nodes)
-            trajectory_tmp.loc[0,'src'] = int(edges_tmp['src'].iloc[0])
-            trajectory_tmp.loc[0,'dst'] = edges_tmp['dst'].tolist()
-            trajectory_tmp.loc[0,'entropy'] = edges_tmp['entropy'].iloc[0] #all same
-            trajectory_tmp.loc[0,'ecdf_src'] = edges_tmp['ecdf_src'].iloc[0] #all same
-            trajectory_tmp.loc[0,'ecdf_dst'] = edges_tmp['ecdf_dst'].tolist()
-            trajectory_tmp.loc[0,'edge_label'] = edges_tmp['edge_label'].iloc[0]
-            trajectory = pd.concat([trajectory, trajectory_tmp], ignore_index=True)
-            #Update src
-            dst = edges_tmp['src'].iloc[0] #allway only one node in the buffer
-        else:
-            break
-    #add direction 'up' to the trajectory where it is missing
-    trajectory['direction'] = trajectory['direction'].fillna('up')
-    
-    
-    #Write real contamination
-    st.header('Real contamination:')
-    if d_day == 1549:
-        st.write('Contaminations placed at:')
-        st.write(pd.DataFrame({'cont_day': 1549, 'dim_name':['product', 'geo'], 'level_name':['item_id', 'store_id'], 'cat_name':['FOODS_3_827','CA_3'], 'level':[0,0], 'cont_value': 2500}))  
-    if d_day == 1556:
-        st.write('Contaminations placed at:')
-        st.write(pd.DataFrame({'cont_day': 1556, 'dim_name':['product', 'geo'], 'level_name':['dept_id', 'store_id'], 'cat_name':['HOUSEHOLD_1','WI_3'], 'level':[1,0], 'cont_value': 13}))
-    if d_day == 1616:
-        st.write('Contaminations placed at:')
-        st.write(pd.DataFrame({'cont_day': 1616, 'dim_name':['geo'], 'level_name':['store_id'], 'cat_name':['TX_1'], 'level':[0], 'cont_value': 2}))
-    if d_day == 1706:
-        st.write('Contaminations placed at:')
-        st.write(pd.DataFrame({'cont_day': 1706, 'dim_name':['product'], 'level_name':['dept_id'], 'cat_name':['HOBBIES_2'], 'level':[0], 'cont_value': 3}))
-    if d_day not in [1549, 1556, 1616, 1706]:
-        st.write('No contamination placed at this day')
+    if st.button('Analyze'):
+        #Instantiate trajectory
+        trajectory_cols = ['src', 'dst', 'entropy', 'ecdf_src', 'ecdf_dst', 'edge_label', 'direction']
+        trajectory = pd.DataFrame(columns=trajectory_cols)
+        trajectory_tmp = pd.DataFrame(columns=trajectory_cols)
+
+        ###Drill down###
+        neighbor_buffer = [start_node]
+
+        while len(neighbor_buffer)>0: #Until there are no more neighbors to connect with edges
+            #Update current src node
+            src = neighbor_buffer[0] 
+            #Find outlying low-entropy neighbors of the start_node
+            edges_tmp = edges_df[(edges_df['src']==src) & (edges_df['entropy']<thr_entropy)& (edges_df['ecdf_dst']>thr_ecdf)].copy()
+            #Select only the highest entropy dst node as several dimensions neighbors may fulfill the condition - 
+            if len(edges_tmp) > 0: #If there are any outlying low-entropy neighbors for src
+                edges_tmp = edges_tmp[edges_tmp['entropy'] == edges_tmp['entropy'].max()]
+                #Create trajectory_step
+                trajectory_tmp.loc[0,'src'] = src
+                trajectory_tmp.loc[0,'dst'] = edges_tmp['dst'].tolist()
+                trajectory_tmp.loc[0,'entropy'] = edges_tmp['entropy'].iloc[0] #all same
+                trajectory_tmp.loc[0,'ecdf_src'] = edges_tmp['ecdf_src'].iloc[0] #all same
+                trajectory_tmp.loc[0,'ecdf_dst'] = edges_tmp['ecdf_dst'].tolist()
+                trajectory_tmp.loc[0,'edge_label'] = edges_tmp['edge_label'].iloc[0]
+                #Update trajectory
+                trajectory = pd.concat([trajectory, trajectory_tmp], ignore_index=True)
+                #Update nodes  buffer
+                #add dst_nodes to the neighbor_buffer
+                neighbor_buffer = neighbor_buffer + edges_tmp['dst'].tolist()
+                #drop duplicates
+                neighbor_buffer = list(set(neighbor_buffer))
+            #Remove src from the neighbor_buffer as it was already connected
+            neighbor_buffer.remove(src)
+        trajectory['direction'] = 'down'  
+        trajectory.reset_index(drop=True, inplace=True)
+        #display(trajectory)
+
+        ####Roll up####
+        dst = start_node
+        #reset trajectory loop temporary 
+        trajectory_tmp = trajectory_tmp = pd.DataFrame(columns=trajectory_cols)
 
 
-    #-----------------------------
-    st.header('Trajectory:')
-    st.write('src->dst') 
-    st.write('  *ecdf = outlyingness ([0,1] the higher the more outlying ') 
-    st.write('  *entropy is information vallue (the lower the better)')
-    st.write(trajectory)
-    
-    #Streamlit write heading 'graph'
-    st.header('Graph')
-    #Streamlit write text
-    st.write('Nodes: ')
-    st.write('  *Color to correspond with ecdf ')
-    st.write('  *Size with turnover')
-    st.write('  *Label with the node id')
-    st.write('  *Border color with yellow for the start node')
-    #Streamlit write text
-    st.write('Edges: ')
-    st.write('  *Color of the edges corresponds with the entropy')
-    st.write('  *Label with the dimension level that is added to the node in the drill down direction')
-    #-----------------------------
-
-    #List of unique nodes appearing in the trajectory (src or dst)
-    list_nodes = list(trajectory['dst'])
-    #flatten the list
-    list_nodes = [item for sublist in list_nodes for item in sublist]
-    #add the src nodes
-    list_nodes = list_nodes + trajectory['src'].to_list()
-    #unique
-    list_nodes = list(set(list_nodes))
-
-
-    #This is to map the colors to the entropy values and ecdf values. We use a different one as the scale (normalization) may be different
-    # Create a color map from red to blue (entropy)
-    cmap_r = plt.get_cmap('coolwarm_r')
-    # Create a color map from blue to red (ecdf)
-    cmap = plt.get_cmap('coolwarm')
-
-    # Create a Normalize object for mapping entropy values to the range [0, 1]
-    norm_node = mcolors.Normalize(vmin=thr_ecdf, vmax=1)
-    norm_edge = mcolors.Normalize(vmin=thr_entropy, vmax=1)
-
-    #instantiate nodes and edges
-    nodes = dict()
-    edges = []
-
-    #-----add to nodes------
-    for i_node in list_nodes:
-        color_value = cmap(norm_node(df_day.loc[i_node,'ecdf']))
-        color_value = mcolors.to_hex(color_value)
-        nodes[i_node] = {'metadata':  {'color':color_value, 
-                                    'size': int(df_day.loc[i_node,'turnover']), 
-                                    'label': create_label(i_node), 
-                                    'border_color': 'yellow' if i_node == start_node else color_value,
-                                    'border_size': 2 if i_node == start_node else 0
-                                    }}
+        while True:
+            edges_tmp = edges_df.loc[(edges_df['dst']==dst) & (edges_df['entropy']<thr_entropy)& (edges_df['ecdf_dst']>thr_ecdf),:].copy()
+            #Select only the highest entropy dst node
+            if len(edges_tmp) > 0: #If there are any outlying low-entropy neighbors for src
+                edges_tmp = edges_tmp[edges_tmp['entropy'] == edges_tmp['entropy'].max()]
+                #This can only be one line (unlike in drill down where there can be multiple dst nodes)
+                trajectory_tmp.loc[0,'src'] = int(edges_tmp['src'].iloc[0])
+                trajectory_tmp.loc[0,'dst'] = edges_tmp['dst'].tolist()
+                trajectory_tmp.loc[0,'entropy'] = edges_tmp['entropy'].iloc[0] #all same
+                trajectory_tmp.loc[0,'ecdf_src'] = edges_tmp['ecdf_src'].iloc[0] #all same
+                trajectory_tmp.loc[0,'ecdf_dst'] = edges_tmp['ecdf_dst'].tolist()
+                trajectory_tmp.loc[0,'edge_label'] = edges_tmp['edge_label'].iloc[0]
+                trajectory = pd.concat([trajectory, trajectory_tmp], ignore_index=True)
+                #Update src
+                dst = edges_tmp['src'].iloc[0] #allway only one node in the buffer
+            else:
+                break
+        #add direction 'up' to the trajectory where it is missing
+        trajectory['direction'] = trajectory['direction'].fillna('up')
+        
+        
+        #Write real contamination
+        st.header('Real contamination:')
+        if d_day == 1549:
+            st.write('Contaminations placed at:')
+            st.write(pd.DataFrame({'cont_day': 1549, 'dim_name':['product', 'geo'], 'level_name':['item_id', 'store_id'], 'cat_name':['FOODS_3_827','CA_3'], 'level':[0,0], 'cont_value': 2500}))  
+        if d_day == 1556:
+            st.write('Contaminations placed at:')
+            st.write(pd.DataFrame({'cont_day': 1556, 'dim_name':['product', 'geo'], 'level_name':['dept_id', 'store_id'], 'cat_name':['HOUSEHOLD_1','WI_3'], 'level':[1,0], 'cont_value': 13}))
+        if d_day == 1616:
+            st.write('Contaminations placed at:')
+            st.write(pd.DataFrame({'cont_day': 1616, 'dim_name':['geo'], 'level_name':['store_id'], 'cat_name':['TX_1'], 'level':[0], 'cont_value': 2}))
+        if d_day == 1706:
+            st.write('Contaminations placed at:')
+            st.write(pd.DataFrame({'cont_day': 1706, 'dim_name':['product'], 'level_name':['dept_id'], 'cat_name':['HOBBIES_2'], 'level':[0], 'cont_value': 3}))
+        if d_day not in [1549, 1556, 1616, 1706]:
+            st.write('No contamination placed at this day')
 
 
-    #-----add to edges------
-    for i_src in range(len(trajectory)):
-        for i_dst in range(len(trajectory.loc[i_src,'dst'])):
+        #-----------------------------
+        st.header('Trajectory:')
+        st.write('src->dst') 
+        st.write('  *ecdf = outlyingness ([0,1] the higher the more outlying ') 
+        st.write('  *entropy is information vallue (the lower the better)')
+        st.write(trajectory)
+        
+        #Streamlit write heading 'graph'
+        st.header('Graph')
+        #Streamlit write text
+        st.write('Nodes: ')
+        st.write('  *Color to correspond with ecdf ')
+        st.write('  *Size with turnover')
+        st.write('  *Label with the node id')
+        st.write('  *Border color with yellow for the start node')
+        #Streamlit write text
+        st.write('Edges: ')
+        st.write('  *Color of the edges corresponds with the entropy')
+        st.write('  *Label with the dimension level that is added to the node in the drill down direction')
+        #-----------------------------
 
-            # Map the entropy value to a color
-            color_value = cmap_r(norm_edge(trajectory.loc[i_src,'entropy']))
-            color_value = mcolors.to_hex(color_value)       
-            edge_tmp = {'source': trajectory.loc[i_src,'src'], 
-                        'target': trajectory.loc[i_src,'dst'][i_dst],
-                        'metadata': {'color':color_value, 
-                                    'edge_label': trajectory.loc[i_src,'edge_label']
-                                    } #get metadata from edges_df (add turnover to edges_df too)
-                        }
-            edges.append(edge_tmp)
+        #List of unique nodes appearing in the trajectory (src or dst)
+        list_nodes = list(trajectory['dst'])
+        #flatten the list
+        list_nodes = [item for sublist in list_nodes for item in sublist]
+        #add the src nodes
+        list_nodes = list_nodes + trajectory['src'].to_list()
+        #unique
+        list_nodes = list(set(list_nodes))
 
-    #Create the graph
-    graph1 = {
-        'graph':{
-            'directed': True,
-            'metadata': {
-                'arrow_size': 5,
-                'background_color': 'black',
-                'edge_size': 3,
-                'edge_label_size': 14,
-                'edge_label_color': 'white',
-                'node_label_size': 10,
-                'node_label_color': 'yellow'
 
-            },
-            'nodes': nodes,
-            'edges': edges,
+        #This is to map the colors to the entropy values and ecdf values. We use a different one as the scale (normalization) may be different
+        # Create a color map from red to blue (entropy)
+        cmap_r = plt.get_cmap('coolwarm_r')
+        # Create a color map from blue to red (ecdf)
+        cmap = plt.get_cmap('coolwarm')
+
+        # Create a Normalize object for mapping entropy values to the range [0, 1]
+        norm_node = mcolors.Normalize(vmin=thr_ecdf, vmax=1)
+        norm_edge = mcolors.Normalize(vmin=thr_entropy, vmax=1)
+
+        #instantiate nodes and edges
+        nodes = dict()
+        edges = []
+
+        #-----add to nodes------
+        for i_node in list_nodes:
+            color_value = cmap(norm_node(df_day.loc[i_node,'ecdf']))
+            color_value = mcolors.to_hex(color_value)
+            nodes[i_node] = {'metadata':  {'color':color_value, 
+                                        'size': int(df_day.loc[i_node,'turnover']), 
+                                        'label': create_label(i_node), 
+                                        'border_color': 'yellow' if i_node == start_node else color_value,
+                                        'border_size': 2 if i_node == start_node else 0
+                                        }}
+
+
+        #-----add to edges------
+        for i_src in range(len(trajectory)):
+            for i_dst in range(len(trajectory.loc[i_src,'dst'])):
+
+                # Map the entropy value to a color
+                color_value = cmap_r(norm_edge(trajectory.loc[i_src,'entropy']))
+                color_value = mcolors.to_hex(color_value)       
+                edge_tmp = {'source': trajectory.loc[i_src,'src'], 
+                            'target': trajectory.loc[i_src,'dst'][i_dst],
+                            'metadata': {'color':color_value, 
+                                        'edge_label': trajectory.loc[i_src,'edge_label']
+                                        } #get metadata from edges_df (add turnover to edges_df too)
+                            }
+                edges.append(edge_tmp)
+
+        #Create the graph
+        graph1 = {
+            'graph':{
+                'directed': True,
+                'metadata': {
+                    'arrow_size': 5,
+                    'background_color': 'black',
+                    'edge_size': 3,
+                    'edge_label_size': 14,
+                    'edge_label_color': 'white',
+                    'node_label_size': 10,
+                    'node_label_color': 'yellow'
+
+                },
+                'nodes': nodes,
+                'edges': edges,
+            }
         }
-    }
-    
-    gv_fig = gv.vis(graph1, 
-       show_node_label=True, 
-       show_edge_label=True, 
-       edge_label_data_source='edge_label', 
-       node_label_data_source='label', 
-       node_size_factor=1/1000,
-       gravitational_constant=-13000,
-       avoid_overlap=0.35
-       )
+        
+        gv_fig = gv.vis(graph1, 
+        show_node_label=True, 
+        show_edge_label=True, 
+        edge_label_data_source='edge_label', 
+        node_label_data_source='label', 
+        node_size_factor=1/1000,
+        gravitational_constant=-13000,
+        avoid_overlap=0.35
+        )
 
-    components.html(gv_fig.to_html(), height=800)
+        components.html(gv_fig.to_html(), height=800)
         #https://stackoverflow.com/questions/77730137/how-to-integrate-gravis-visualization-inside-of-streamlit
 
     
