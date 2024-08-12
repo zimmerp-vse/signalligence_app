@@ -124,6 +124,8 @@ preds1 = config_read.get("MainSettings", "preds1") #the response
 dim_files = list_files(shap_pth)
 #extract numbers from the filenames after 'before '_'
 days_in_dir = [int(i.split('_')[0]) for i in dim_files]
+#sort by days
+days_in_dir.sort()
 #days_in_dir =list(range(1547,1561)) 
 
 #d_day = 1556
